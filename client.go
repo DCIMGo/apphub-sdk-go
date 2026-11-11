@@ -30,6 +30,7 @@ type client struct {
 	requestLock sync.Mutex
 }
 
+// New 验证应用配置并创建客户端。调用者可通过 Client 接口接入业务。
 func New(config Config) (Client, error) {
 	if !validAppID(config.AppID) || config.AppVersion == "" || config.LicensePath == "" || len(config.PublicKeys) == 0 {
 		return nil, fmt.Errorf("appId, appVersion, licensePath, and publicKeys are required")
@@ -129,6 +130,7 @@ func (c *client) MachineRequest(ctx context.Context) ([]byte, error) {
 	return content, nil
 }
 
+// ImportLicense 先校验授权内容，确认临时文件仍可验签后再替换本地文件。
 func (c *client) ImportLicense(ctx context.Context, content []byte) (*Status, error) {
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -167,6 +169,7 @@ func (c *client) ImportLicense(ctx context.Context, content []byte) (*Status, er
 	return statusPointer(status), nil
 }
 
+// VerifyLocal 读取现有文件，检查授权签名、绑定、有效期和本地时钟记录。
 func (c *client) VerifyLocal(ctx context.Context) (*Status, error) {
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -285,6 +288,7 @@ func statusUsable(status Status) bool {
 		status.LeaseState == string(license.LeaseGrace)
 }
 
+// readClock 读取上次确认的时间，供识别系统时钟回拨。
 func (c *client) readClock() (time.Time, error) {
 	content, err := os.ReadFile(c.config.LicensePath + ".clock")
 	if errors.Is(err, os.ErrNotExist) {
@@ -410,10 +414,7 @@ func cloneRawMap(source map[string]json.RawMessage) map[string]json.RawMessage {
 	return result
 }
 
-// requireContext keeps the public SDK methods fail-safe. A nil context is a
-// programming error, but returning a regular error is preferable to allowing
-// a machine source, HTTP request, or local verifier to panic while an
-// application is starting up.
+// requireContext 在访问机器信息、网络或本地授权之前拒绝空上下文。
 func requireContext(ctx context.Context) error {
 	if ctx == nil {
 		return fmt.Errorf("context is required")

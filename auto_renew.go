@@ -8,6 +8,7 @@ import (
 	license "github.com/DCIMGo/apphub-sdk-go/internal/protocol"
 )
 
+// StartAutoRenew 确认缓存租约可验后启动定期检查，进入续租或宽限状态时尝试续签。
 func (c *client) StartAutoRenew(ctx context.Context) error {
 	if ctx == nil {
 		return fmt.Errorf("context is required")
@@ -29,6 +30,7 @@ func (c *client) StartAutoRenew(ctx context.Context) error {
 	return nil
 }
 
+// StopAutoRenew 通知后台协程退出，并等待当前续签流程结束。
 func (c *client) StopAutoRenew() {
 	c.mu.Lock()
 	cancel := c.autoCancel

@@ -1,7 +1,4 @@
-// Package bootstrap contains the small, shared startup adapter used by the
-// first-party applications. It keeps public-key file parsing and startup
-// policy identical across go-dcim, go-monitor, go-north, go-push and
-// go-sample.
+// Package bootstrap 提供配置加载、公钥解析和应用启动校验的通用入口。
 package bootstrap
 
 import (
@@ -17,6 +14,7 @@ import (
 	apphubsdk "github.com/DCIMGo/apphub-sdk-go"
 )
 
+// Config 保存解析后的 SDK 启动配置，供 New 创建客户端。
 type Config struct {
 	AppID                     string
 	AppVersion                string
@@ -27,10 +25,7 @@ type Config struct {
 	UseUnifiedMachineIdentity bool
 }
 
-// FileConfig is the portable local-development configuration format shared by
-// first-party applications. Environment variables with the APPHUB_SDK_ prefix
-// override non-empty file values, so the same file can be used locally while a
-// deployment injects only the values that differ.
+// FileConfig 描述 JSON 配置结构。对应的非空 APPHUB_SDK_ 环境变量可覆盖字符串字段。
 type FileConfig struct {
 	AppID                     string `json:"appId"`
 	AppVersion                string `json:"appVersion"`
@@ -41,10 +36,8 @@ type FileConfig struct {
 	UseUnifiedMachineIdentity bool   `json:"useUnifiedMachineIdentity,omitempty"`
 }
 
-// LoadConfig reads a JSON configuration file and applies APPHUB_SDK_*
-// overrides. An empty path resolves to ./config/apphub-sdk.json. The loader is
-// intentionally small and dependency-free so applications can use it before
-// their main framework is initialized.
+// LoadConfig 读取 JSON 配置并应用环境变量覆盖。
+// 路径为空时读取 ./config/apphub-sdk.json。
 func LoadConfig(path string) (Config, error) {
 	if strings.TrimSpace(path) == "" {
 		path = filepath.Join("config", "apphub-sdk.json")
@@ -71,7 +64,7 @@ func LoadConfig(path string) (Config, error) {
 	}, nil
 }
 
-// NewFromConfig constructs a client from the local JSON configuration file.
+// NewFromConfig 加载本地 JSON 配置及验签公钥，构造客户端。
 func NewFromConfig(path string) (apphubsdk.Client, error) {
 	config, err := LoadConfig(path)
 	if err != nil {
@@ -89,9 +82,7 @@ type keyEntry struct {
 	PublicKey string `json:"publicKeyBase64"`
 }
 
-// LoadPublicKeys reads the public verification-key envelope distributed with
-// an application release. Private keys and activation codes are never accepted
-// by this parser.
+// LoadPublicKeys 从受信任来源的 JSON 文件加载 Ed25519 验签公钥，并按 keyId 建立索引。
 func LoadPublicKeys(path string) (map[string]ed25519.PublicKey, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -121,7 +112,7 @@ func LoadPublicKeys(path string) (map[string]ed25519.PublicKey, error) {
 	return keys, nil
 }
 
-// New creates a client using the shared first-party configuration contract.
+// New 按解析后的配置加载验签公钥并创建 SDK 客户端。
 func New(config Config) (apphubsdk.Client, error) {
 	keys, err := LoadPublicKeys(config.PublicKeyPath)
 	if err != nil {
@@ -134,9 +125,8 @@ func New(config Config) (apphubsdk.Client, error) {
 	})
 }
 
-// VerifyStartup enforces the common startup gate. Offline and activate-once
-// applications require a usable local file; online applications may continue
-// with a valid lease or its configured grace state.
+// VerifyStartup 先检查本地授权，再检查缓存租约。
+// 有效、即将到期的本地文件以及允许继续使用的租约状态均可通过启动检查。
 func VerifyStartup(ctx context.Context, client apphubsdk.Client) (*apphubsdk.Status, error) {
 	localStatus, localErr := client.VerifyLocal(ctx)
 	if localErr == nil && (localStatus.LocalState == "active" || localStatus.LocalState == "expiring") {

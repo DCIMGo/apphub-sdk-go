@@ -1,4 +1,4 @@
-// Command apphub-machine-request prints a unified machine authorization request.
+// Command apphub-machine-request 在目标机器生成 AppHub 授权申请码或 JSON。
 package main
 
 import (

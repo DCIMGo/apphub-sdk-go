@@ -10,6 +10,7 @@ import (
 
 const machineDigestDomain = "dcimgo-apphub/machine/v1"
 
+// NormalizeMachineComponents 规范化旧版机器绑定组成项并生成摘要。
 func NormalizeMachineComponents(components ...string) (string, error) {
 	values := make([]string, 0, len(components))
 	seen := make(map[string]struct{}, len(components))
@@ -46,6 +47,7 @@ func NormalizeMachineComponents(components ...string) (string, error) {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// IsMachineID 检查机器摘要是否符合协议格式。
 func IsMachineID(value string) bool {
 	if len(value) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(value, "sha256:") {
 		return false

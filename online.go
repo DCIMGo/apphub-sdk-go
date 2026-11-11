@@ -74,6 +74,7 @@ type commonOnlineRequest struct {
 	Nonce           string                   `json:"nonce"`
 }
 
+// ActivateOnce 校验返回文件的大小和摘要，再交给本地导入流程验签并安装。
 func (c *client) ActivateOnce(ctx context.Context, request ActivateRequest) (*Status, error) {
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -136,6 +137,7 @@ func (c *client) ActivateOnce(ctx context.Context, request ActivateRequest) (*St
 	return c.ImportLicense(ctx, content)
 }
 
+// AuthorizeOnline 用激活码申请租约，校验返回的签名内容后保存缓存。
 func (c *client) AuthorizeOnline(ctx context.Context, request AuthorizeRequest) (*Status, error) {
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -178,6 +180,7 @@ func (c *client) AuthorizeOnline(ctx context.Context, request AuthorizeRequest) 
 	return c.installLease(ctx, response.LeaseToken, body.ProtocolVersion)
 }
 
+// RenewOnline 按当前签名租约的绑定方案与修订号请求续签。
 func (c *client) RenewOnline(ctx context.Context) (*Status, error) {
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -285,9 +288,7 @@ func (c *client) verifyCachedLease(ctx context.Context) (*Status, error) {
 	return statusPointer(status), err
 }
 
-// VerifyOnlineLease verifies the last locally cached signed online lease
-// without contacting AppHub. Applications use it during process startup so a
-// valid lease or its signed grace policy survives a temporary outage.
+// VerifyOnlineLease 离线检查最近缓存的签名租约，按签名时间窗判断当前租约状态。
 func (c *client) VerifyOnlineLease(ctx context.Context) (*Status, error) {
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -415,6 +416,7 @@ type requestMetadata struct {
 	nonce     string
 }
 
+// newRequestMetadata 为在线请求生成请求标识、随机数和 UTC 时间戳。
 func newRequestMetadata(clock func() time.Time) (requestMetadata, error) {
 	requestID, err := randomToken(18)
 	if err != nil {

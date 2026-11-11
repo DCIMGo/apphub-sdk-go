@@ -8,9 +8,7 @@ import (
 	"time"
 )
 
-// updateCheckResponse mirrors the public SDK update/check response. Release
-// metadata is intentionally flat in the wire contract so clients can render a
-// decision without downloading a manifest first.
+// updateCheckResponse 对应更新检查接口的扁平响应，可直接用于展示服务端判断。
 type updateCheckResponse struct {
 	UpdateAvailable        bool       `json:"updateAvailable"`
 	Reason                 string     `json:"reason"`
@@ -30,9 +28,7 @@ type updateCheckResponse struct {
 	DownloadTokenExpiresAt *time.Time `json:"downloadTokenExpiresAt"`
 }
 
-// CheckUpdate asks AppHub whether the configured instance is entitled to a
-// published update. It does not download or install anything; callers should
-// verify the returned manifest and hand the package to an updater agent.
+// CheckUpdate 查询实例可用的更新及清单摘要。下载、验签和安装由更新器负责。
 func (c *client) CheckUpdate(ctx context.Context, request UpdateCheckRequest) (*UpdateCheckResult, error) {
 	c.requestLock.Lock()
 	defer c.requestLock.Unlock()

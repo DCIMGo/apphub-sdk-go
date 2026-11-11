@@ -115,6 +115,8 @@ func compareUint(left, right uint64) int {
 	}
 	return 0
 }
+
+// ValidateVersionRange 根据授权载荷检查当前应用版本是否落在允许区间。
 func ValidateVersionRange(version string, versionRange VersionRange) error {
 	current, err := parseSemanticVersion(version)
 	if err != nil {

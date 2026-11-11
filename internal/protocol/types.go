@@ -62,6 +62,8 @@ type VersionRange struct {
 	Minimum          string `json:"minimum,omitempty"`
 	MaximumExclusive string `json:"maximumExclusive,omitempty"`
 }
+
+// Entitlements 将应用权益分为功能开关、整数额度和 JSON 配置。
 type Entitlements struct {
 	Features map[string]bool            `json:"features,omitempty"`
 	Limits   map[string]int64           `json:"limits,omitempty"`
@@ -76,6 +78,8 @@ type UpdatePolicy struct {
 	AllowRollback       bool       `json:"allowRollback"`
 	ForcedUpdateAllowed bool       `json:"forcedUpdateAllowed,omitempty"`
 }
+
+// Payload 是离线授权和一次激活文件的签名载荷。
 type Payload struct {
 	SchemaVersion     string                   `json:"schemaVersion"`
 	LicenseID         string                   `json:"licenseId"`
@@ -93,6 +97,8 @@ type Payload struct {
 	Entitlements      Entitlements             `json:"entitlements"`
 	UpdatePolicy      UpdatePolicy             `json:"updatePolicy"`
 }
+
+// LeasePayload 是联网租约的签名载荷，包含续签、到期和宽限时间窗。
 type LeasePayload struct {
 	SchemaVersion    string                   `json:"schemaVersion"`
 	AuthorizationID  string                   `json:"authorizationId"`

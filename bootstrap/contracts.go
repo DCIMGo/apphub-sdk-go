@@ -1,8 +1,6 @@
 package bootstrap
 
-// Contract is the runtime portion of the first-party application contract.
-// Release tooling can use it to reject an application configuration that
-// drifts from the platform registry.
+// Contract 表示内置应用接入契约，包含授权模式、SDK 最低版本和更新渠道。
 type Contract struct {
 	AppID              string
 	MinimumSDKVersion  string
@@ -19,7 +17,7 @@ var firstPartyContracts = []Contract{
 	{AppID: "go-sample", MinimumSDKVersion: "0.1.0", AuthorizationModes: []string{"offline", "activate_once", "online_lease"}, RecommendedMode: "offline", UpdateChannels: []string{"stable", "beta"}},
 }
 
-// FirstPartyContracts returns a defensive copy of the five initial contracts.
+// FirstPartyContracts 返回五个内置应用的契约副本，调用者可独立修改。
 func FirstPartyContracts() []Contract {
 	result := make([]Contract, len(firstPartyContracts))
 	for index, contract := range firstPartyContracts {
@@ -30,7 +28,7 @@ func FirstPartyContracts() []Contract {
 	return result
 }
 
-// FirstPartyContract returns one contract by stable App ID.
+// FirstPartyContract 按应用标识查询契约并返回副本。
 func FirstPartyContract(appID string) (Contract, bool) {
 	for _, contract := range firstPartyContracts {
 		if contract.AppID == appID {

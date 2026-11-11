@@ -8,6 +8,7 @@ import (
 	"os"
 )
 
+// readInstallationID 读取 Linux 的 /etc/machine-id，并限制输入长度。
 func readInstallationID() (string, Binding, error) {
 	const path = "/etc/machine-id"
 	file, err := os.Open(path)

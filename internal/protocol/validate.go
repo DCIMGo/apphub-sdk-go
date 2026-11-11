@@ -6,12 +6,14 @@ import (
 	"time"
 )
 
+// VerifyOptions 保存授权校验使用的本地应用、机器、实例和时钟信息。
 type VerifyOptions struct {
 	AppID, AppVersion, MachineID, InstanceID string
 	Now                                      time.Time
 	ExpiringBefore                           time.Duration
 }
 
+// ValidatePayload 校验已验签的本地授权与运行环境是否匹配。
 func ValidatePayload(payload Payload, options VerifyOptions) (Status, error) {
 	now := options.Now.UTC()
 	if now.IsZero() {
@@ -68,6 +70,8 @@ func ValidatePayload(payload Payload, options VerifyOptions) (Status, error) {
 	}
 	return status, nil
 }
+
+// ValidateLease 校验已验签的租约，并按签名时间窗计算当前状态。
 func ValidateLease(payload LeasePayload, options VerifyOptions) (Status, error) {
 	now := options.Now.UTC()
 	if now.IsZero() {

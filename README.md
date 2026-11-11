@@ -1,207 +1,157 @@
 # DCIMGo AppHub Go SDK
 
-Module path: `github.com/DCIMGo/apphub-sdk-go`. Consumers must use an immutable
-published version such as `v0.1.0`; application repositories must not use a
-relative `replace` or copy this source tree. The AppHub workspace uses `go.work`
-only to run server-to-SDK protocol compatibility tests before publication.
+Go 应用可以用这个 SDK 生成机器码、验证授权文件、在线激活、管理联网租约，以及读取功能和额度。Windows 和 Linux 应用可使用统一机器身份。AppHub 接收授权申请并签发，目标应用在本机采集和验签。
 
-The SDK verifies signed licenses locally for `offline` and `activate_once`, and
-caches short-lived signed leases for `online_lease`. It sends no business usage,
-application logs, or raw hardware attributes to AppHub.
+## 安装
+
+在调用方的 Go 项目中安装已发布版本。仓库要求 Go 1.23 或更高版本。
+
+```sh
+go get github.com/DCIMGo/apphub-sdk-go@v0.1.0
+```
+
+应用仓库提交 `go.mod` 和 `go.sum`，后续构建使用已锁定的版本。也可以直接下载采集工具和 `SHA256SUMS`。 [v0.1.0 下载](https://github.com/DCIMGo/apphub-sdk-go/releases/tag/v0.1.0)
+
+## 获取机器码
+
+在**需要授权的目标机器**上运行采集工具。把 `go-sample`、`1.0.0` 和 `default` 换成 AppHub 中登记的应用标识、实际应用版本和实例标识。
+
+```sh
+go run github.com/DCIMGo/apphub-sdk-go/cmd/apphub-machine-request@v0.1.0 -app-id go-sample -app-version 1.0.0 -instance-id default
+```
+
+程序输出一行 `AHM1.` 申请码。把它粘贴到 AppHub「机器码离线授权」的「机器码」输入框，核对平台、运行架构、应用和实例，再按批准的来源签发。已有脚本可追加 `-format json` 获取原有申请 JSON。
+
+非 Go 程序可以调用 Release 中的对应平台二进制。用进程参数传入应用、版本和实例。退出码为 0 时从标准输出读取申请码，失败时从标准错误读取提示。
+
+### 在 Go 程序中调用
+
+应用的「获取机器码」按钮可以调用 `machineidentity.Collect`，再把 `MarshalRequestCode` 的返回值显示出来。
 
 ```go
 package main
 
 import (
 	"context"
-	"crypto/ed25519"
+	"fmt"
 	"log"
+	"time"
 
-	apphubsdk "github.com/DCIMGo/apphub-sdk-go"
+	"github.com/DCIMGo/apphub-sdk-go/machineidentity"
 )
 
 func main() {
-	publicKeys := map[string]ed25519.PublicKey{
-		"license-2026-01": loadPublicKey(),
-	}
-	sdk, err := apphubsdk.New(apphubsdk.Config{
-		AppID:       "go-dcim",
-		AppVersion:  "2.1.0",
-		InstanceID:  "dcim-primary",
-		ServerURL:   "https://apphub.example.com",
-		LicensePath: "/var/lib/go-dcim/app.license",
-		PublicKeys:  publicKeys,
-	})
+	identity, err := machineidentity.Collect(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	status, err := sdk.VerifyLocal(context.Background())
+	code, err := identity.MarshalRequestCode("go-sample", "1.0.0", "default", time.Now())
 	if err != nil {
-		log.Printf("license unavailable: %v", err)
-		return
+		log.Fatal(err)
 	}
-	if status.LocalState == "active" && sdk.HasFeature("asset.export") {
-		// Enable the feature at the business entry point.
-	}
-}
-
-func loadPublicKey() ed25519.PublicKey { return nil }
-```
-
-One-time activation downloads a long-lived license and verifies its digest,
-signature, App ID, machine binding, version, and time window before replacing
-the local file:
-
-```go
-status, err := sdk.ActivateOnce(ctx, apphubsdk.ActivateRequest{
-	ActivationCode: code, // Never log this value.
-	IdempotencyKey: requestID,
-})
-```
-
-Online leases use `AuthorizeOnline`, `RenewOnline`, and optionally
-`StartAutoRenew`. A network failure does not become a revocation: the SDK derives
-`authorized`, `renewing`, `grace`, then `restricted` from the last verified signed
-lease. Applications must enforce returned feature and limit values themselves.
-
-## 本地联调流程
-
-SDK 的本地流程可以按“启动校验 → 激活/授权 → 权益读取 → 更新检查”组织。所有公开
-方法都要求传入非空 `context.Context`；传入 `nil` 会返回 `context is required`，不会
-触发机器信息读取或网络请求。
-
-一次性激活只在线请求一次授权文件，文件通过签名、摘要、应用号、机器码、版本和时间窗
-校验后才原子写入 `LicensePath`：
-
-```go
-status, err := client.ActivateOnce(ctx, apphubsdk.ActivateRequest{
-	ActivationCode: code,
-	IdempotencyKey: "go-sample-activate-20260826-0001",
-})
-if err != nil {
-	return err // 原有本地授权文件不会被替换
-}
-log.Printf("activated: %s", status.LicenseID)
-```
-
-联网租约应用建议在启动时先验证缓存，网络可用时再申请或续租；短暂断网期间可继续使用
-签名租约声明的 `grace` 策略：
-
-```go
-status, err := client.VerifyOnlineLease(ctx)
-if err != nil || (status.LeaseState != "authorized" && status.LeaseState != "renewing" && status.LeaseState != "grace") {
-	status, err = client.AuthorizeOnline(ctx, apphubsdk.AuthorizeRequest{
-		ActivationCode: code,
-		IdempotencyKey: "go-sample-online-20260826-0001",
-	})
-	if err != nil {
-		return err
-	}
-}
-if err := client.StartAutoRenew(ctx); err != nil {
-	return err
-}
-defer client.StopAutoRenew()
-```
-
-更新检查只返回权益范围内的发布元数据，不会自动下载或安装：
-
-```go
-decision, err := client.CheckUpdate(ctx, apphubsdk.UpdateCheckRequest{
-	CurrentVersion: "1.0.0",
-	Channel:        "stable",
-})
-if err != nil {
-	return err
-}
-if decision.UpdateAvailable && decision.Release != nil {
-	log.Printf("update %s available (task=%s)", decision.Release.Version, decision.UpdateTaskID)
+	fmt.Println(code)
 }
 ```
 
-更新包仍需交给独立 updater 完成清单、摘要、签名和健康检查；SDK 不在业务进程内执行
-安装或回滚。
+Windows 读取系统 `MachineGuid`，Linux 读取 `/etc/machine-id`。申请只包含派生摘要和申请字段。生成时间变化会改变整行申请码，同一系统安装的绑定摘要保持稳定。
 
-The default machine source uses a normalized hostname/OS/architecture digest.
-Production deployments should provide a stable, platform-specific
-`MachineSource` (for example, a TPM or OS installation identifier). Only the
-purpose-separated `sha256:...` digest is placed in machine requests.
+## 在应用中初始化 SDK
 
-### 统一机器码（Windows / Linux）
-
-Go 应用可用 `go get github.com/DCIMGo/apphub-sdk-go@main` 获取主分支当前提交，
-Go 会将该提交的版本写入 `go.mod`。接入项目应提交 `go.mod` 和 `go.sum`，
-后续构建使用项目已锁定的版本。目标程序调用 `machineidentity.Collect(ctx)`，
-再用返回对象的 `MarshalRequestCode(appID, appVersion, instanceID, time.Now())`
-生成供用户复制的 `AHM1.` 授权申请码。
-
-也可以用 `go install github.com/DCIMGo/apphub-sdk-go/cmd/apphub-machine-request@main`
-安装命令。生产构建按 AppHub SDK 发布流程使用批准的版本。
-
-
-在目标系统进入 SDK 仓库根目录，运行下面的命令，替换应用标识、版本和实例。
-
-```sh
-go run ./cmd/apphub-machine-request -app-id my-app -app-version 1.0.0 -instance-id default
-```
-
-把输出的一行 `AHM1.` 机器码粘贴到 AppHub「机器码离线授权」的「机器码」输入框。
-页面会显示平台、运行架构、采集来源、应用和实例，再按批准来源签发。
-脚本如需原来的 JSON 输出，可追加 `-format json`。应用也可调用
-`machineidentity.Identity.MarshalRequestCode` 生成可粘贴的文本。
-同一系统安装上的应用使用同一绑定摘要，签发文件仍绑定各自应用和实例。
-Windows 使用系统 `MachineGuid`，Linux 使用 `/etc/machine-id`，输出仅包含派生摘要及申请字段。
-
-SDK 使用 `Config.UseUnifiedMachineIdentity: true`（bootstrap JSON 中为
-`"useUnifiedMachineIdentity": true`）发送新申请、一次激活和联网租约请求。
-开关默认关闭；新旧签名文件始终按各自的协议版本选择验签身份，无需为读取
-既有授权更改配置。升级时保留原 `MachineSource` 和历史受信公钥。
-
-Security notes:
-
-- Embed only verification public keys in applications; signing private keys do
-  not belong in the SDK.
-- Use HTTPS. Plain HTTP is accepted only for loopback local development.
-- Preserve historical public keys while still-valid artifacts reference them.
-- Treat local clock rollback detection as tamper resistance, not as protection
-  from a machine administrator.
-
-## 本地配置文件兜底
-
-首批应用可以使用 `bootstrap.LoadConfig` 读取一个 JSON 配置文件，默认路径
-为 `./config/apphub-sdk.json`；`APPHUB_SDK_APP_ID`、`APPHUB_SDK_APP_VERSION`、
-`APPHUB_SDK_INSTANCE_ID`、`APPHUB_SDK_SERVER_URL`、`APPHUB_SDK_LICENSE_PATH`
-和 `APPHUB_SDK_PUBLIC_KEY_PATH` 等非空环境变量会覆盖文件值。这样本机测试
-不需要重复拼接长命令，部署时也可以只注入差异配置。
-
-仓库提供可直接复制的模板：`config/apphub-sdk.example.json`。模板只包含
-本机联调地址和相对路径，不包含授权码、私钥或真实公钥；复制到应用自己的
-`config/apphub-sdk.json` 后，再按应用号和数据目录调整值即可。
+将 [配置模板](config/apphub-sdk.example.json) 复制为 `config/apphub-sdk.json`。指定应用版本、实例、授权文件路径和 AppHub 导出的可信验签公钥文件。下面是本地离线验签配置示例。
 
 ```json
 {
   "appId": "go-sample",
   "appVersion": "1.0.0",
-  "instanceId": "go-sample-local",
-  "serverUrl": "http://127.0.0.1:50000",
+  "instanceId": "default",
   "licensePath": "./data/go-sample.license",
   "publicKeyPath": "./data/license-public-keys.json"
 }
 ```
 
+把已签发的授权文件放到 `licensePath`，再在应用启动时调用 `VerifyLocal`。状态为 `active` 或 `expiring` 时，本地授权可用。
+
 ```go
-config, err := bootstrap.LoadConfig("./config/apphub-sdk.json")
-if err != nil { log.Fatal(err) }
-client, err := bootstrap.New(config)
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/DCIMGo/apphub-sdk-go/bootstrap"
+)
+
+func main() {
+	client, err := bootstrap.NewFromConfig("./config/apphub-sdk.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	status, err := client.VerifyLocal(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("授权状态 %s\n", status.LocalState)
+	fmt.Printf("数据导出权限 %t\n", client.HasFeature("asset.export"))
+}
 ```
 
-仓库根目录的 `scripts/sdk-local-demo.ps1` 提供可重复的本地联调入口。默认会先以
-开发配置运行 SQLite 种子命令，再运行 SDK 的 `httptest` 契约测试，覆盖本地授权、
-一次性激活、联网租约续期/断网宽限和更新检查；使用 `-SkipSeed` 可跳过数据库种子。
-该脚本只验证 SDK 行为，不连接生产授权服务，也不负责下载、安装或回滚更新包。
+如果程序已经负责加载配置和公钥，可以直接将这些值传给 `apphubsdk.New(apphubsdk.Config{...})`。带 `context.Context` 的 SDK 方法都要求传入非空上下文。
 
-Release inputs are prepared by `apphub-sdk-release` in the AppHub repository.
-The generated file-proxy archive is tested from an empty module cache before it
-may be promoted to the approved Git/Go proxy and tagged. A local proxy test does
-not constitute production publication.
+## 组合接口和嵌入客户端
+
+用接口组合把授权检查接到业务服务中。业务服务只依赖所需方法，测试时可以注入实现相同接口的替身。需要保留完整 SDK 接口并加上业务方法时，可以在结构体里嵌入 `apphubsdk.Client`。 [Go 嵌入说明](https://go.dev/doc/effective_go#embedding)
+
+```go
+package licensing
+
+import "github.com/DCIMGo/apphub-sdk-go"
+
+type FeatureReader interface {
+	HasFeature(code string) bool
+}
+
+type ExportService struct {
+	features FeatureReader
+}
+
+func NewExportService(features FeatureReader) ExportService {
+	return ExportService{features: features}
+}
+
+func (s ExportService) CanExport() bool {
+	return s.features.HasFeature("asset.export")
+}
+
+type LicenseClient struct {
+	apphubsdk.Client
+}
+
+func (c LicenseClient) ExportLimit() (int64, bool) {
+	return c.GetIntLimit("asset.export.max")
+}
+
+var _ apphubsdk.Client = LicenseClient{}
+```
+
+初始化并验证授权后，使用 `NewExportService(client)` 注入 SDK。需要调用扩展方法时，构造 `LicenseClient{Client: client}`。嵌入类型仍可调用 SDK 的原有方法。
+
+`HasFeature`、`GetIntLimit` 和 `GetConfig` 读取最近一次校验保存的权益。应用应在启动时先校验，并按业务需要刷新授权状态。在真正执行导出、添加设备等操作时检查功能与额度。读取额度和配置时，用第二个返回值判断该项是否存在。将示例权益键换成 AppHub 授权项中的实际键。
+
+## 选择授权模式
+
+| 模式 | 调用流程 |
+| --- | --- |
+| 完全离线 | 启动调用 `VerifyLocal`。收到新文件时读取字节并调用 `ImportLicense(ctx, content)`，SDK 验证成功后安装文件。 |
+| 一次激活 | 调用 `ActivateOnce(ctx, apphubsdk.ActivateRequest{ActivationCode: code})` 获取并安装签名文件。之后启动调用 `VerifyLocal`。同一激活意图重试时复用同一个 `IdempotencyKey`。 |
+| 联网租约 | 启动调用 `VerifyOnlineLease` 检查缓存，首次申请使用 `AuthorizeOnline`。可用状态为 `authorized`、`renewing`、`grace`。到达签名的续签窗口后调用 `RenewOnline`，也可用 `StartAutoRenew` 启动后台续签，退出时调用 `StopAutoRenew`。 |
+
+同时支持本地文件和联网租约的应用可使用 `bootstrap.VerifyStartup`，它先检查本地文件，再检查缓存租约。只允许单一授权模式的应用可直接调用对应的校验方法。
+
+## 配置与运行约定
+
+- 在线激活、租约和更新检查需要设置 `serverUrl`，远程服务使用 HTTPS。本机联调可使用回环 HTTP。
+- `bootstrap.LoadConfig` 会读取 `APPHUB_SDK_APP_ID`、`APPHUB_SDK_APP_VERSION`、`APPHUB_SDK_INSTANCE_ID`、`APPHUB_SDK_SERVER_URL`、`APPHUB_SDK_LICENSE_PATH` 和 `APPHUB_SDK_PUBLIC_KEY_PATH`。对应的非空环境变量覆盖 JSON 字符串字段。
+- 在支持 2.0 请求的 AppHub 环境中，将 JSON 的 `useUnifiedMachineIdentity` 或 Go 配置的 `UseUnifiedMachineIdentity` 设为 `true`，可让新请求使用统一机器身份。SDK 根据已签名文件或租约的协议选择验签方案。沿用旧授权时，保留原来的 `MachineSource` 和仍在使用的历史公钥。
+- 使用服务账号可写的持久化目录保存授权、`.clock` 和缓存租约。应用只部署验签公钥，激活码和短期实例凭证按敏感配置处理。
+- `CheckUpdate` 返回实例有权访问的更新信息及清单摘要。包下载、签名验证、安装和回滚由更新器执行。

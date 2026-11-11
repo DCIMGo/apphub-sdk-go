@@ -9,6 +9,7 @@ import (
 	"runtime"
 )
 
+// maxLocalArtifactSize 限制本地授权文件和租约的读取大小。
 const maxLocalArtifactSize = 4 << 20
 
 func readBoundedFile(path string) ([]byte, error) {
@@ -31,6 +32,7 @@ func atomicWrite(path string, content []byte, mode os.FileMode) error {
 	return atomicWriteValidated(path, content, mode, nil)
 }
 
+// atomicWriteValidated 将内容写到同一目录的临时文件，按需复验后再替换目标。
 func atomicWriteValidated(path string, content []byte, mode os.FileMode, validate func([]byte) error) error {
 	if path == "" {
 		return fmt.Errorf("destination path is required")

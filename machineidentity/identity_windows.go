@@ -7,11 +7,12 @@ import (
 	"syscall"
 )
 
+// readInstallationID 从 Windows 注册表读取当前系统的 MachineGuid。
 func readInstallationID() (string, Binding, error) {
 	path, _ := syscall.UTF16PtrFromString(`SOFTWARE\Microsoft\Cryptography`)
 	name, _ := syscall.UTF16PtrFromString("MachineGuid")
 	var key syscall.Handle
-	// The WOW64 view flag has no effect on a 32-bit Windows installation.
+	// 64 位系统统一读原生注册表视图，32 位系统忽略此标志。
 	if err := syscall.RegOpenKeyEx(syscall.HKEY_LOCAL_MACHINE, path, 0, syscall.KEY_QUERY_VALUE|syscall.KEY_WOW64_64KEY, &key); err != nil {
 		return "", Binding{}, fmt.Errorf("open Windows installation identity: %w", err)
 	}

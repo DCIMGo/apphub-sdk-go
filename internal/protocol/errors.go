@@ -2,6 +2,7 @@ package protocol
 
 import "fmt"
 
+// ErrorCode 是供 SDK 和调用方判断校验失败原因的稳定错误码。
 type ErrorCode string
 
 const (
@@ -19,6 +20,7 @@ const (
 	ErrClockRollback              ErrorCode = "clock_rollback_suspected"
 )
 
+// ValidationError 指明校验失败的字段与原因，并可保留底层错误。
 type ValidationError struct {
 	Code  ErrorCode
 	Field string

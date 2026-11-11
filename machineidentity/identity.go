@@ -1,4 +1,4 @@
-// Package machineidentity collects the versioned AppHub machine identity.
+// Package machineidentity 采集 AppHub 统一机器身份并生成授权申请。
 package machineidentity
 
 import (
@@ -16,14 +16,17 @@ import (
 	"unicode"
 )
 
+// Scheme 标识计算机器摘要的规则版本。
 const Scheme = "dcimgo-machine-v1"
+
+// RequestVersion 标识统一授权申请的 JSON 版本。
 const RequestVersion = "2.0"
 
-// RequestCodePrefix identifies the one-line request format.
+// RequestCodePrefix 标识可粘贴的一行申请码格式。
 const RequestCodePrefix = "AHM1."
 const maxRequestCodeLength = 4096
 
-// Binding identifies the inputs and scope of a signed machine ID.
+// Binding 描述授权绑定的身份方案、范围、平台和标识来源。
 type Binding struct {
 	Scheme   string `json:"scheme"`
 	Scope    string `json:"scope"`
@@ -31,19 +34,20 @@ type Binding struct {
 	Provider string `json:"provider"`
 }
 
+// Valid 判断平台和标识来源是否为当前支持的配对。
 func (b Binding) Valid() bool {
 	return b.Scheme == Scheme && b.Scope == "os-installation" &&
 		(b.Platform == "windows" && b.Provider == "windows.machine-guid" ||
 			b.Platform == "linux" && b.Provider == "linux.machine-id")
 }
 
-// Identity contains only the derived code and the public binding description.
+// Identity 保存派生后的机器摘要和绑定描述。
 type Identity struct {
 	MachineID string
 	Binding   Binding
 }
 
-// Collect reads the local system installation identity without creating one.
+// Collect 读取当前系统已有的安装标识并计算机器摘要。
 func Collect(ctx context.Context) (Identity, error) {
 	if ctx == nil {
 		return Identity{}, errors.New("machine identity requires a context")
@@ -62,6 +66,7 @@ var machineCode = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$`)
 
+// derive 规范化标识，再按协议域、平台和来源计算 HMAC-SHA256 摘要。
 func derive(raw string, binding Binding) (Identity, error) {
 	if !binding.Valid() {
 		return Identity{}, errors.New("unsupported machine identity provider")
@@ -103,7 +108,7 @@ func (i Identity) request(appID, appVersion, instanceID string, at time.Time) (a
 	return authorizationRequest{RequestVersion, appID, appVersion, instanceID, i.MachineID, i.Binding, at.UTC()}, nil
 }
 
-// MarshalRequest creates the portable JSON request consumed by AppHub.
+// MarshalRequest 生成 AppHub 可读取的授权申请 JSON。
 func (i Identity) MarshalRequest(appID, appVersion, instanceID string, at time.Time) ([]byte, error) {
 	request, err := i.request(appID, appVersion, instanceID, at)
 	if err != nil {
@@ -112,8 +117,8 @@ func (i Identity) MarshalRequest(appID, appVersion, instanceID string, at time.T
 	return json.Marshal(request)
 }
 
-// MarshalRequestCode creates a one-line code for pasting into AppHub. The
-// collector architecture is descriptive and does not affect machine binding.
+// MarshalRequestCode 生成可粘贴的一行 AHM1 申请码。
+// 运行架构用于展示，机器绑定由 MachineID 确定。
 func (i Identity) MarshalRequestCode(appID, appVersion, instanceID string, at time.Time) (string, error) {
 	request, err := i.request(appID, appVersion, instanceID, at)
 	if err != nil {

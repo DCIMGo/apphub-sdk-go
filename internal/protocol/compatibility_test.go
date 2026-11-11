@@ -8,9 +8,7 @@ import (
 	"time"
 )
 
-// This fixture locks the server/SDK envelope domain, canonical JSON payload,
-// and RawURL signature encoding. A protocol change must introduce a new
-// schema/purpose instead of silently changing these bytes.
+// 固定向量校验签名用途域、规范 JSON 载荷和无填充 Base64URL 签名。协议变更需使用新的版本或用途。
 func TestLicenseEnvelopeCompatibilityFixture(t *testing.T) {
 	seed := make([]byte, ed25519.SeedSize)
 	for index := range seed {

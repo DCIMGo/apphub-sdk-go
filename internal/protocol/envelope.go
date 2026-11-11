@@ -21,6 +21,7 @@ const (
 	maxPayloadSize   = 2 << 20
 )
 
+// Envelope 是携带签名、用途、版本、密钥标识及原始载荷字节的信封。
 type Envelope struct {
 	SchemaVersion string          `json:"schemaVersion"`
 	Purpose       string          `json:"purpose"`
@@ -29,6 +30,8 @@ type Envelope struct {
 	Payload       json.RawMessage `json:"payload"`
 	Signature     string          `json:"signature"`
 }
+
+// SignFunc 对协议规定的原始字节生成签名。
 type SignFunc func(context.Context, []byte) ([]byte, error)
 
 func SignLicense(ctx context.Context, payload Payload, keyID string, sign SignFunc) ([]byte, error) {
@@ -81,8 +84,10 @@ func signPayload(ctx context.Context, purpose, schemaVersion, keyID string, payl
 	return content, nil
 }
 
+// KeySet 用密钥标识查找应用信任的验签公钥。
 type KeySet map[string]ed25519.PublicKey
 
+// VerifyLicense 校验文件用途、签名、版本一致性及绑定字段。
 func (keys KeySet) VerifyLicense(content []byte) (Payload, Envelope, error) {
 	var payload Payload
 	envelope, err := keys.verify(content, PurposeLicense)
@@ -99,6 +104,8 @@ func (keys KeySet) VerifyLicense(content []byte) (Payload, Envelope, error) {
 	}
 	return payload, envelope, nil
 }
+
+// VerifyLease 按联网租约用途校验签名及载荷中的版本与绑定。
 func (keys KeySet) VerifyLease(content []byte) (LeasePayload, Envelope, error) {
 	var payload LeasePayload
 	envelope, err := keys.verify(content, PurposeLease)
@@ -150,6 +157,8 @@ func (keys KeySet) verify(content []byte, expectedPurpose string) (Envelope, err
 	}
 	return envelope, nil
 }
+
+// signatureInput 组合用途、协议版本、密钥标识和原始载荷，隔离不同协议的签名。
 func signatureInput(purpose, schemaVersion, keyID string, payload []byte) []byte {
 	digest := sha256.Sum256(payload)
 	return []byte(strings.Join([]string{"DCIMGO-APPHUB-SIGNED-ENVELOPE", purpose, schemaVersion, keyID, hex.EncodeToString(digest[:])}, "\n"))

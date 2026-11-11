@@ -8,6 +8,7 @@ import (
 
 const SchemaVersionV2 = "2.0"
 
+// ValidMachineBinding 校验机器摘要和协议版本要求的绑定字段。
 func ValidMachineBinding(version, machineID string, binding *machineidentity.Binding) bool {
 	if !IsMachineID(machineID) {
 		return false
