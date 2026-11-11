@@ -1,0 +1,8 @@
+{
+  "appId": "go-sample",
+  "appVersion": "1.0.0",
+  "instanceId": "go-sample-local",
+  "serverUrl": "http://127.0.0.1:50000",
+  "licensePath": "./data/go-sample.license",
+  "publicKeyPath": "./data/license-public-keys.json"
+}
