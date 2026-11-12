@@ -4,20 +4,20 @@ Go 应用可以用这个 SDK 生成机器码、验证授权文件、在线激活
 
 ## 安装
 
-在调用方的 Go 项目中安装已发布版本。仓库要求 Go 1.23 或更高版本。
+在调用方的 Go 项目中安装已发布版本。仓库要求 Go 1.23 或更高版本。SDK 使用 GoFrame v2.10.2 的环境变量、错误、JSON 和 Base64 组件，可直接在普通 Go 项目中使用。授权 HTTP 请求使用可注入的 `*http.Client`，默认校验服务端证书，重定向须与原请求同源。
 
 ```sh
-go get github.com/DCIMGo/apphub-sdk-go@v0.1.1
+go get github.com/DCIMGo/apphub-sdk-go@v0.1.2
 ```
 
-应用仓库提交 `go.mod` 和 `go.sum`，后续构建使用已锁定的版本。也可以直接下载采集工具和 `SHA256SUMS`。 [v0.1.1 下载](https://github.com/DCIMGo/apphub-sdk-go/releases/tag/v0.1.1)
+应用仓库提交 `go.mod` 和 `go.sum`，后续构建使用已锁定的版本。也可以直接下载采集工具和 `SHA256SUMS`。 [v0.1.2 下载](https://github.com/DCIMGo/apphub-sdk-go/releases/tag/v0.1.2)
 
 ## 获取机器码
 
 在**需要授权的目标机器**上运行采集工具。把 `go-sample`、`1.0.0` 和 `default` 换成 AppHub 中登记的应用标识、实际应用版本和实例标识。
 
 ```sh
-go run github.com/DCIMGo/apphub-sdk-go/cmd/apphub-machine-request@v0.1.1 -app-id go-sample -app-version 1.0.0 -instance-id default
+go run github.com/DCIMGo/apphub-sdk-go/cmd/apphub-machine-request@v0.1.2 -app-id go-sample -app-version 1.0.0 -instance-id default
 ```
 
 程序输出一行 `AHM1.` 申请码。把它粘贴到 AppHub「机器码离线授权」的「机器码」输入框，核对平台、运行架构、应用和实例，再按批准的来源签发。已有脚本可追加 `-format json` 获取原有申请 JSON。

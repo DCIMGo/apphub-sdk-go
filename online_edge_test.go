@@ -3,6 +3,7 @@ package apphubsdk
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -217,6 +218,54 @@ func TestHTTPClientBlocksCrossOriginAuthorizationRedirect(t *testing.T) {
 	}
 	if targetCalled.Load() {
 		t.Fatal("authorization request reached redirect target")
+	}
+}
+
+func TestAuthorizationHTTPClientVerifiesTLSAndFollowsSameOriginRedirect(t *testing.T) {
+	const idempotencyKey = "tls-request-key-0001"
+	var hits atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, "/finish", http.StatusTemporaryRedirect)
+			return
+		}
+		var payload map[string]string
+		if r.URL.Path != "/finish" || r.Method != http.MethodPost ||
+			r.Header.Get("Idempotency-Key") != idempotencyKey ||
+			json.NewDecoder(r.Body).Decode(&payload) != nil || payload["value"] != "保留请求体" {
+			http.Error(w, "unexpected request after redirect", http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":0,"data":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	fixture := newSDKTestFixture(t)
+	config := fixture.config(t, nil)
+	config.ServerURL = server.URL
+	sdk, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := map[string]string{"value": "保留请求体"}
+	var output struct {
+		OK bool `json:"ok"`
+	}
+	err = sdk.(*client).postJSON(context.Background(), server.URL, "/start", idempotencyKey, payload, &output)
+	var unknownAuthority x509.UnknownAuthorityError
+	if !errors.As(err, &unknownAuthority) || hits.Load() != 0 {
+		t.Fatalf("expected untrusted TLS certificate to be rejected before HTTP request, got %v", err)
+	}
+
+	config.HTTPClient = server.Client()
+	sdk, err = New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sdk.(*client).postJSON(context.Background(), server.URL, "/start", idempotencyKey, payload, &output)
+	if err != nil || !output.OK || hits.Load() != 2 {
+		t.Fatalf("trusted TLS and same-origin redirect failed: output=%+v, err=%v", output, err)
 	}
 }
 

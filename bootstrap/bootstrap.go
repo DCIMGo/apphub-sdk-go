@@ -4,14 +4,15 @@ package bootstrap
 import (
 	"context"
 	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	apphubsdk "github.com/DCIMGo/apphub-sdk-go"
+	"github.com/gogf/gf/v2/encoding/gbase64"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/os/genv"
 )
 
 // Config 保存解析后的 SDK 启动配置，供 New 创建客户端。
@@ -37,6 +38,7 @@ type FileConfig struct {
 }
 
 // LoadConfig 读取 JSON 配置并应用环境变量覆盖。
+// 配置加载可在应用框架初始化之前执行。
 // 路径为空时读取 ./config/apphub-sdk.json。
 func LoadConfig(path string) (Config, error) {
 	if strings.TrimSpace(path) == "" {
@@ -44,14 +46,14 @@ func LoadConfig(path string) (Config, error) {
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("read SDK config %q: %w", path, err)
+		return Config{}, gerror.Wrapf(err, "read SDK config %q", path)
 	}
 	var file FileConfig
 	if err := json.Unmarshal(content, &file); err != nil {
-		return Config{}, fmt.Errorf("decode SDK config %q: %w", path, err)
+		return Config{}, gerror.Wrapf(err, "decode SDK config %q", path)
 	}
 	value := func(fileValue, envName string) string {
-		if envValue := strings.TrimSpace(os.Getenv(envName)); envValue != "" {
+		if envValue := strings.TrimSpace(genv.Get(envName, "").String()); envValue != "" {
 			return envValue
 		}
 		return strings.TrimSpace(fileValue)
@@ -86,26 +88,26 @@ type keyEntry struct {
 func LoadPublicKeys(path string) (map[string]ed25519.PublicKey, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read public key file: %w", err)
+		return nil, gerror.Wrap(err, "read public key file")
 	}
 	var envelope keyFile
 	if err := json.Unmarshal(content, &envelope); err != nil {
-		return nil, fmt.Errorf("decode public key file: %w", err)
+		return nil, gerror.Wrap(err, "decode public key file")
 	}
 	if len(envelope.Keys) == 0 {
-		return nil, fmt.Errorf("public key file contains no keys")
+		return nil, gerror.New("public key file contains no keys")
 	}
 	keys := make(map[string]ed25519.PublicKey, len(envelope.Keys))
 	for _, entry := range envelope.Keys {
 		if strings.TrimSpace(entry.KeyID) == "" {
-			return nil, fmt.Errorf("public key id is required")
+			return nil, gerror.New("public key id is required")
 		}
 		if _, exists := keys[entry.KeyID]; exists {
-			return nil, fmt.Errorf("public key id %q is duplicated", entry.KeyID)
+			return nil, gerror.Newf("public key id %q is duplicated", entry.KeyID)
 		}
-		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(entry.PublicKey))
+		decoded, err := gbase64.DecodeString(strings.TrimSpace(entry.PublicKey))
 		if err != nil || len(decoded) != ed25519.PublicKeySize {
-			return nil, fmt.Errorf("public key %q is not a base64 Ed25519 key", entry.KeyID)
+			return nil, gerror.Newf("public key %q is not a base64 Ed25519 key", entry.KeyID)
 		}
 		keys[entry.KeyID] = ed25519.PublicKey(decoded)
 	}
@@ -137,7 +139,7 @@ func VerifyStartup(ctx context.Context, client apphubsdk.Client) (*apphubsdk.Sta
 		return leaseStatus, nil
 	}
 	if localErr != nil && leaseErr != nil {
-		return localStatus, fmt.Errorf("local license unavailable (%v) and cached online lease unavailable (%v)", localErr, leaseErr)
+		return localStatus, gerror.Newf("local license unavailable (%v) and cached online lease unavailable (%v)", localErr, leaseErr)
 	}
-	return localStatus, fmt.Errorf("authorization is not usable: local=%s lease=%s", localStatus.LocalState, leaseStatus.LeaseState)
+	return localStatus, gerror.Newf("authorization is not usable: local=%s lease=%s", localStatus.LocalState, leaseStatus.LeaseState)
 }

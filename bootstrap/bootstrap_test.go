@@ -5,6 +5,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,11 +76,13 @@ func TestLoadConfigUsesFileValuesAndEnvironmentOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("APPHUB_SDK_INSTANCE_ID", "env-instance")
+	t.Setenv("APPHUB_SDK_SERVER_URL", "  ")
 	config, err := LoadConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.AppID != "go-sample" || config.InstanceID != "env-instance" || config.PublicKeyPath != "./data/keys.json" {
+	if config.AppID != "go-sample" || config.InstanceID != "env-instance" ||
+		config.ServerURL != "http://127.0.0.1:60800" || config.PublicKeyPath != "./data/keys.json" {
 		t.Fatalf("unexpected SDK config: %#v", config)
 	}
 }
@@ -88,8 +92,16 @@ func TestLoadConfigRejectsMalformedJSON(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"appId":`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadConfig(path); err == nil {
-		t.Fatal("malformed SDK config unexpectedly accepted")
+	var syntaxError *json.SyntaxError
+	if _, err := LoadConfig(path); !errors.As(err, &syntaxError) {
+		t.Fatalf("LoadConfig error = %v, want wrapped JSON syntax error", err)
+	}
+}
+
+func TestLoadConfigPreservesMissingFileError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.json")
+	if _, err := LoadConfig(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("LoadConfig error = %v, want wrapped missing-file error", err)
 	}
 }
 

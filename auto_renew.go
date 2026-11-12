@@ -2,24 +2,24 @@ package apphubsdk
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	license "github.com/DCIMGo/apphub-sdk-go/internal/protocol"
+	"github.com/gogf/gf/v2/errors/gerror"
 )
 
 // StartAutoRenew 确认缓存租约可验后启动定期检查，进入续租或宽限状态时尝试续签。
 func (c *client) StartAutoRenew(ctx context.Context) error {
 	if ctx == nil {
-		return fmt.Errorf("context is required")
+		return gerror.New("context is required")
 	}
 	if _, err := c.verifyCachedLease(ctx); err != nil {
-		return fmt.Errorf("verify cached lease before auto-renew: %w", err)
+		return gerror.Wrap(err, "verify cached lease before auto-renew")
 	}
 	c.mu.Lock()
 	if c.autoCancel != nil {
 		c.mu.Unlock()
-		return fmt.Errorf("automatic renewal is already running")
+		return gerror.New("automatic renewal is already running")
 	}
 	runContext, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})

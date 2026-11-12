@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -16,6 +15,8 @@ import (
 
 	license "github.com/DCIMGo/apphub-sdk-go/internal/protocol"
 	"github.com/DCIMGo/apphub-sdk-go/machineidentity"
+	"github.com/gogf/gf/v2/encoding/gjson"
+	"github.com/gogf/gf/v2/errors/gerror"
 )
 
 const protocolVersion = license.SchemaVersionV1
@@ -116,14 +117,14 @@ func (c *client) ActivateOnce(ctx context.Context, request ActivateRequest) (*St
 	}
 	content, err := decodeEnvelope(response.File.Content)
 	if err != nil {
-		return nil, fmt.Errorf("decode issued license: %w", err)
+		return nil, gerror.Wrap(err, "decode issued license")
 	}
 	if response.File.Size != int64(len(content)) {
-		return nil, fmt.Errorf("issued license size mismatch")
+		return nil, gerror.New("issued license size mismatch")
 	}
 	digest := sha256.Sum256(content)
 	if !strings.EqualFold(response.File.SHA256, hex.EncodeToString(digest[:])) {
-		return nil, fmt.Errorf("issued license digest mismatch")
+		return nil, gerror.New("issued license digest mismatch")
 	}
 	if binding != nil {
 		payload, _, err := c.keys.VerifyLicense(content)
@@ -189,7 +190,7 @@ func (c *client) RenewOnline(ctx context.Context) (*Status, error) {
 	defer c.requestLock.Unlock()
 	content, err := readBoundedFile(c.leasePath())
 	if err != nil {
-		return nil, fmt.Errorf("read cached lease: %w", err)
+		return nil, gerror.Wrap(err, "read cached lease")
 	}
 	payload, _, err := c.keys.VerifyLease(content)
 	if err != nil {
@@ -197,7 +198,7 @@ func (c *client) RenewOnline(ctx context.Context) (*Status, error) {
 	}
 	server := c.currentServerURL()
 	if server == "" {
-		return nil, fmt.Errorf("authorization server URL is required for renewal")
+		return nil, gerror.New("authorization server URL is required for renewal")
 	}
 	machine, err := c.machineForBinding(ctx, payload.MachineBinding)
 	if err != nil {
@@ -254,7 +255,7 @@ func (c *client) RenewOnline(ctx context.Context) (*Status, error) {
 func (c *client) installLease(ctx context.Context, encoded, expectedVersion string) (*Status, error) {
 	content, err := decodeEnvelope(encoded)
 	if err != nil {
-		return nil, fmt.Errorf("decode signed lease: %w", err)
+		return nil, gerror.Wrap(err, "decode signed lease")
 	}
 	payload, _, err := c.keys.VerifyLease(content)
 	if err != nil {
@@ -327,7 +328,7 @@ func (c *client) prepareOnline(override, instanceID, idempotencyKey string) (str
 		server = c.currentServerURL()
 	}
 	if server == "" {
-		return "", "", "", fmt.Errorf("authorization server URL is required")
+		return "", "", "", gerror.New("authorization server URL is required")
 	}
 	if _, err := validateServerURL(server); err != nil {
 		return "", "", "", err
@@ -336,7 +337,7 @@ func (c *client) prepareOnline(override, instanceID, idempotencyKey string) (str
 		instanceID = c.config.InstanceID
 	}
 	if instanceID == "" || len(instanceID) > 100 {
-		return "", "", "", fmt.Errorf("invalid instanceId")
+		return "", "", "", gerror.New("invalid instanceId")
 	}
 	if idempotencyKey == "" {
 		var err error
@@ -346,7 +347,7 @@ func (c *client) prepareOnline(override, instanceID, idempotencyKey string) (str
 		}
 	}
 	if len(idempotencyKey) < 16 || len(idempotencyKey) > 128 {
-		return "", "", "", fmt.Errorf("idempotency key must contain 16 to 128 characters")
+		return "", "", "", gerror.New("idempotency key must contain 16 to 128 characters")
 	}
 	c.mu.Lock()
 	c.serverURL = server
@@ -369,28 +370,28 @@ func (c *client) postJSON(ctx context.Context, server, endpoint, idempotencyKey 
 	}
 	base.Path = strings.TrimRight(base.Path, "/") + endpoint
 	base.RawPath = ""
-	requestBody, err := json.Marshal(body)
+	requestBody, err := gjson.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("marshal AppHub request: %w", err)
+		return gerror.Wrap(err, "marshal AppHub request")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), bytes.NewReader(requestBody))
 	if err != nil {
-		return fmt.Errorf("create AppHub request: %w", err)
+		return gerror.Wrap(err, "create AppHub request")
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Idempotency-Key", idempotencyKey)
 	response, err := c.config.HTTPClient.Do(request)
 	if err != nil {
-		return fmt.Errorf("call AppHub authorization service: %w", err)
+		return gerror.Wrap(err, "call AppHub authorization service")
 	}
 	defer response.Body.Close()
 	content, err := io.ReadAll(io.LimitReader(response.Body, maxLocalArtifactSize+1))
 	if err != nil {
-		return fmt.Errorf("read AppHub response: %w", err)
+		return gerror.Wrap(err, "read AppHub response")
 	}
 	if len(content) > maxLocalArtifactSize {
-		return fmt.Errorf("AppHub response exceeds size limit")
+		return gerror.New("AppHub response exceeds size limit")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var failure apiResponse[apiErrorData]
@@ -399,13 +400,13 @@ func (c *client) postJSON(ctx context.Context, server, endpoint, idempotencyKey 
 	}
 	var success apiResponse[json.RawMessage]
 	if err := json.Unmarshal(content, &success); err != nil {
-		return fmt.Errorf("decode AppHub response: %w", err)
+		return gerror.Wrap(err, "decode AppHub response")
 	}
 	if success.Code != 0 {
 		return &APIError{HTTPStatus: response.StatusCode, Code: success.Code, Message: success.Message, TraceID: success.TraceID}
 	}
 	if err := json.Unmarshal(success.Data, output); err != nil {
-		return fmt.Errorf("decode AppHub response data: %w", err)
+		return gerror.Wrap(err, "decode AppHub response data")
 	}
 	return nil
 }
@@ -432,7 +433,7 @@ func newRequestMetadata(clock func() time.Time) (requestMetadata, error) {
 func randomToken(size int) (string, error) {
 	buffer := make([]byte, size)
 	if _, err := rand.Read(buffer); err != nil {
-		return "", fmt.Errorf("generate secure request token: %w", err)
+		return "", gerror.Wrap(err, "generate secure request token")
 	}
 	return base64.RawURLEncoding.EncodeToString(buffer), nil
 }
@@ -444,10 +445,10 @@ func decodeEnvelope(value string) ([]byte, error) {
 	}
 	content, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return nil, fmt.Errorf("invalid base64url envelope")
+		return nil, gerror.New("invalid base64url envelope")
 	}
 	if len(content) == 0 || len(content) > maxLocalArtifactSize {
-		return nil, fmt.Errorf("invalid envelope size")
+		return nil, gerror.New("invalid envelope size")
 	}
 	return content, nil
 }

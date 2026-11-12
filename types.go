@@ -10,7 +10,7 @@ import (
 )
 
 // Version 是 SDK 版本，也是在线请求中的客户端版本。
-const Version = "0.1.0"
+const Version = "0.1.2"
 
 // Client 定义应用可调用的 SDK 接口。接受上下文的方法要求传入非空 context.Context。
 type Client interface {

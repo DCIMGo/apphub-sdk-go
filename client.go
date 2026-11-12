@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +15,7 @@ import (
 	license "github.com/DCIMGo/apphub-sdk-go/internal/protocol"
 	licensefile "github.com/DCIMGo/apphub-sdk-go/internal/protocol"
 	"github.com/DCIMGo/apphub-sdk-go/machineidentity"
+	"github.com/gogf/gf/v2/errors/gerror"
 )
 
 type client struct {
@@ -33,16 +33,16 @@ type client struct {
 // New 验证应用配置并创建客户端。调用者可通过 Client 接口接入业务。
 func New(config Config) (Client, error) {
 	if !validAppID(config.AppID) || config.AppVersion == "" || config.LicensePath == "" || len(config.PublicKeys) == 0 {
-		return nil, fmt.Errorf("appId, appVersion, licensePath, and publicKeys are required")
+		return nil, gerror.New("appId, appVersion, licensePath, and publicKeys are required")
 	}
 	if err := license.ValidateVersionRange(config.AppVersion, license.VersionRange{}); err != nil {
-		return nil, fmt.Errorf("invalid appVersion: %w", err)
+		return nil, gerror.Wrap(err, "invalid appVersion")
 	}
 	if config.InstanceID == "" {
 		config.InstanceID = "default"
 	}
 	if len(config.InstanceID) > 100 {
-		return nil, fmt.Errorf("instanceId exceeds 100 characters")
+		return nil, gerror.New("instanceId exceeds 100 characters")
 	}
 	if config.ServerURL != "" {
 		if _, err := validateServerURL(config.ServerURL); err != nil {
@@ -82,7 +82,7 @@ func New(config Config) (Client, error) {
 	keys := make(licensefile.KeySet, len(config.PublicKeys))
 	for keyID, publicKey := range config.PublicKeys {
 		if len(publicKey) != ed25519.PublicKeySize {
-			return nil, fmt.Errorf("invalid public key %q", keyID)
+			return nil, gerror.Newf("invalid public key %q", keyID)
 		}
 		keys[keyID] = append(ed25519.PublicKey(nil), publicKey...)
 	}
@@ -125,7 +125,7 @@ func (c *client) MachineRequest(ctx context.Context) ([]byte, error) {
 	}{license.SchemaVersionV1, c.config.AppID, machine, c.config.Clock().UTC()}
 	content, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("marshal machine request: %w", err)
+		return nil, gerror.Wrap(err, "marshal machine request")
 	}
 	return content, nil
 }
@@ -136,7 +136,7 @@ func (c *client) ImportLicense(ctx context.Context, content []byte) (*Status, er
 		return nil, err
 	}
 	if len(content) == 0 || len(content) > maxLocalArtifactSize {
-		return nil, fmt.Errorf("license content is empty or too large")
+		return nil, gerror.New("license content is empty or too large")
 	}
 	now := c.config.Clock().UTC()
 	lastSeen, err := c.readClock()
@@ -295,11 +295,11 @@ func (c *client) readClock() (time.Time, error) {
 		return time.Time{}, nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("read verification clock: %w", err)
+		return time.Time{}, gerror.Wrap(err, "read verification clock")
 	}
 	value, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(content)))
 	if err != nil {
-		return time.Time{}, fmt.Errorf("parse verification clock: %w", err)
+		return time.Time{}, gerror.Wrap(err, "parse verification clock")
 	}
 	return value.UTC(), nil
 }
@@ -323,23 +323,23 @@ func validAppID(value string) bool {
 func validateServerURL(value string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimRight(value, "/"))
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return nil, fmt.Errorf("invalid authorization server URL")
+		return nil, gerror.New("invalid authorization server URL")
 	}
 	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1")) {
-		return nil, fmt.Errorf("authorization server must use HTTPS")
+		return nil, gerror.New("authorization server must use HTTPS")
 	}
 	return parsed, nil
 }
 
 func secureRedirect(request *http.Request, via []*http.Request) error {
 	if len(via) >= 3 {
-		return fmt.Errorf("too many redirects")
+		return gerror.New("too many redirects")
 	}
 	if request.URL.Scheme != "https" && request.URL.Hostname() != "localhost" && request.URL.Hostname() != "127.0.0.1" && request.URL.Hostname() != "::1" {
-		return fmt.Errorf("redirect to insecure authorization server blocked")
+		return gerror.New("redirect to insecure authorization server blocked")
 	}
 	if len(via) > 0 && (!strings.EqualFold(request.URL.Scheme, via[0].URL.Scheme) || !strings.EqualFold(request.URL.Host, via[0].URL.Host)) {
-		return fmt.Errorf("cross-origin authorization redirect blocked")
+		return gerror.New("cross-origin authorization redirect blocked")
 	}
 	return nil
 }
@@ -417,7 +417,7 @@ func cloneRawMap(source map[string]json.RawMessage) map[string]json.RawMessage {
 // requireContext 在访问机器信息、网络或本地授权之前拒绝空上下文。
 func requireContext(ctx context.Context) error {
 	if ctx == nil {
-		return fmt.Errorf("context is required")
+		return gerror.New("context is required")
 	}
 	return nil
 }
